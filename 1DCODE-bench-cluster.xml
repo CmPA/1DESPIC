@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<jube>
+  <benchmark name="CPU_speedup" outpath="bench_deepcpu">
+    <comment>Benchmark of the 1DCODE-paper on the DEEP Cluster CPU, Intel Xeon Sandy Bridge</comment>
+    
+    <!-- Configuration -->
+    <parameterset name="param_set">
+      <parameter name="submit_cmd"            >qsub</parameter>
+      <parameter name="ready_file"            >ready</parameter>
+      <parameter name="job_script"            >job.pbs</parameter>
+      <parameter name="job_nodetype"          >cluster</parameter>
+      <parameter name="job_name"              >1D-SB</parameter>
+      <parameter name="job_ppn" type="int"    >16</parameter>
+      <parameter name="job_err"               >stderr</parameter>
+      <parameter name="job_out"               >stdout</parameter>
+      <parameter name="job_srcname"           >va1D1V</parameter>
+      <parameter name="job_input"             >Case01.inp</parameter>
+      <parameter name="job_afinity"           >OMP_PROC_BIND=CLOSE</parameter>
+      <parameter name="job_nthread" type="int">1,2,4,8,16</parameter>
+      <parameter name="precision"             >SP,DP</parameter>
+      <parameter name="extension"             >intel64</parameter>
+    </parameterset>
+    
+    <!-- Files -->
+    <fileset name="files">
+      <copy>${job_input}</copy>
+      <copy>${job_srcname}-${precision}.${extension}</copy>
+      <copy>${job_script}</copy>
+    </fileset>
+    
+    <!-- Substitute -->
+    <substituteset name="subsjob">
+      <iofile in="${job_script}" out="${job_script}.run" />
+      <sub source="#NAME#"       dest="${job_name}.${job_nthread}" />
+      <sub source="#OUTFILE#"    dest="$job_out" />
+      <sub source="#ERRFILE#"    dest="$job_err" />
+      <sub source="#PPN#"        dest="$job_ppn" />
+      <sub source="#NODETYPE#"   dest="$job_nodetype" />
+      <sub source="#NUMTHREADS#" dest="$job_nthread" />
+      <sub source="#EXEC#"       dest="./${job_srcname}-${precision}.${extension}" />
+      <sub source="#AFINITY#"    dest="${job_afinity}" />
+      <sub source="#INPUT#"      dest="${job_input}" />
+      <sub source="#READY#"      dest="$ready_file" />
+    </substituteset>
+
+    <!-- Regex pattern -->
+    <patternset name="pattern">
+      <pattern name="number_pat" type="float">Loop time: $jube_pat_fp s</pattern>
+    </patternset>
+
+    <!-- Operation -->
+    <step name="submit">
+      <use>param_set</use>    <!-- use existing parameterset -->
+      <use>files</use>        <!-- use existing fileset -->
+      <use>subsjob</use>      <!-- use existing substituteset -->
+      <do done_file="${ready_file}">${submit_cmd} ${job_script}.run</do>
+    </step>    
+
+    <!-- Analyse -->
+    <analyser name="analyse">
+      <use>pattern</use> <!-- use existing patternset -->
+      <analyse step="submit">
+        <file>stdout</file> <!-- file which should be scanned -->
+      </analyse>
+    </analyser>
+
+    <!-- Create result table -->
+    <result>
+      <use>analyse</use> <!-- use existing analyser -->
+      <table name="result" style="pretty" sort="precision,job_nthread">
+        <column>precision</column>
+        <column>job_nthread</column>
+        <column>number_pat_max</column>
+        <column>number_pat_min</column>
+        <column>number_pat_avg</column>
+      </table>
+    </result>
+
+  </benchmark>
+</jube>

@@ -1,0 +1,11 @@
+# Case of the Vapirev et al. paper
+Number of cells              : 255
+Number of particles per cell : 512
+Number of cycles             : 8000
+Time step (dt)               : 0.1
+Cell size (dx)               : 0.039
+Charge density               : 1.0
+Charge mass ratio (qom)      : -1.0
+Thermal velocity             : 0.002
+Drift velocity               : 0.1
+IO cycles                    : 500
