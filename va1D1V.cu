@@ -1,22 +1,20 @@
-////////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////////
-////                                                                        ////
-////  Vlasov-Ampere apprach for Particle In Cell simulations: 1D            ////
-////                                                                        ////
-////  Version for GPU                                                       ////
-////                                                                        ////
-////  The number of particles and cells are variable.                       ////
-////                                                                        ////
-////  Diego Gonzalez                                                        ////
-////  June of 2016                                                          ////
-////                                                                        ////
-////////////////////////////////////////////////////////////////////////////////
+/** @file va1D1V.cpp
+ *  @brief Vlasov-Ampere 1D electrostatic particle-in-cell code for GPU
+ *  @author Diego GONZALEZ-HERRERO <diego.gonzalez@kuleuven.be>
+ *  @date June, 2016
+ *
+ *   Copyright (c) 2016 KU Leuven University
+ *   Some rights reserved. See COPYING, AUTHORS.
+ *
+ *  @license GPL-3.0 <https://opensource.org/licenses/GPL-3.0>
+ */
+
 ////////////////////////////////////////////////////////////////////////////////
 ////                                                                        ////
 ////  compile with CUDA3.2: nvcc -arch=sm_21 main.cu                        ////
 ////                                                                        ////
 ////////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////////
+
 #include <stdio.h>
 #include <string.h>
 #include <math.h>
@@ -241,12 +239,10 @@ InputData readInput(const char* file)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////////
 ////
 ////    MAIN 
 ////
 ////////////////////////////////////////////////////////////////////////////////
-////
 ////
 ////  Input file format: 
 ////           # First line as a comment
