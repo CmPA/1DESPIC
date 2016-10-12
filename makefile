@@ -1,5 +1,19 @@
 all: cpu knl knc cpudp knldp kncdp
 
+clean: cleancpu cleanknc cleanknl txt
+
+txt:
+	rm *.txt
+
+cleancpu:
+	rm va1D1V-*.intel64
+
+cleanknc:
+	rm va1D1V-*.mic
+
+cleanknl:
+	rm va1D1V-*.knl
+
 gpu: va1D1V-GPU.cu histogram.h iClocks.h
 	nvcc -arch=sm_21 va1D1V-GPU.cu -o va1D1V-GPU 
 
