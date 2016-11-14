@@ -14,7 +14,6 @@
 ////  compile with CUDA3.2: nvcc -arch=sm_21 main.cu                        ////
 ////                                                                        ////
 ////////////////////////////////////////////////////////////////////////////////
-
 #include <stdio.h>
 #include <string.h>
 #include <math.h>
@@ -23,9 +22,9 @@
 #include <ctime>
 #include "histogram.h"
 
-#define NUMBER float
+#define NUMBER double
 
-#define WITH_PART_IO
+//#define WITH_PART_IO
 
 typedef struct {
   char   name[256];
@@ -58,20 +57,25 @@ typedef struct {
 // <<1, NumNodes>>
 __global__ void set_current( NUMBER *jx, int nodThre)
 {
-//if ((threadIdx.x == 0) && (blockIdx.x == 0)) printf("set current\n");
-  int tid = (threadIdx.x + blockIdx.x * blockDim.x)*nodThre;
-  for (int i=0; i<nodThre; i++, tid++) jx[tid] = 0;
+  int tid = threadIdx.x;
+  int nth = blockDim.x;
+  for (int i=0; i<nodThre; i++, tid+=nth) jx[tid] = 0;
 }
+
 
 // <<NumCell, threads>>
 __global__ void add_current(NUMBER *Jx, NUMBER *rx, NUMBER *vx, NUMBER dx, NUMBER q, int parThre)
 {
 //if ((threadIdx.x == 0) && (blockIdx.x == 0)) printf("Add current\n");
   // Particle index
-  int tid = (threadIdx.x + blockIdx.x * blockDim.x)*parThre;
+  int nth = blockDim.x;
+  int nbl = gridDim.x;
+  int tid = nth*blockIdx.x + threadIdx.x;
+
+  int nthab = nth*nbl;
   // Indes of last node:
   int lastN = gridDim.x;
-  for (int i=0; i<parThre; i++, tid++) {
+  for (int i=0; i<parThre; i++, tid+=nthab) {
     NUMBER x = rx[tid];
     NUMBER v = vx[tid];
 
@@ -89,26 +93,34 @@ __global__ void add_current(NUMBER *Jx, NUMBER *rx, NUMBER *vx, NUMBER dx, NUMBE
     atomicAdd(&Jx[idc1], val1);    // sm_20 or more
     atomicAdd(&Jx[idc2], val2);    // sm_20 or more
   
-    if (idc1 == 0) atomicAdd(&Jx[lastN], val1);
-    if (idc2 == lastN) atomicAdd(&Jx[0], val2);
+    //if (idc1 == 0) atomicAdd(&Jx[lastN], val1);
+    //if (idc2 == lastN) atomicAdd(&Jx[0], val2);
   }	
+  __syncthreads();
+
+  if (blockIdx.x == 0 && threadIdx.x == 0) {
+    Jx[lastN] += Jx[0];
+    Jx[0] = Jx[lastN];
+  }
 }
 // <<1, NumNodes>>
 __global__ void calc_field( NUMBER *Jx, NUMBER *Ex, NUMBER dt, int nodThre)
 {
-//if ((threadIdx.x == 0) && (blockIdx.x == 0)) printf("Calc field\n");
-  int tid = (threadIdx.x + blockIdx.x * blockDim.x)*nodThre;
-  for (int i=0; i<nodThre; i++, tid++) Ex[tid] -= Jx[tid]*dt;
+  int tid = threadIdx.x;
+  int nth = blockDim.x;
+  for (int i=0; i<nodThre; i++, tid+=nth) Ex[tid] -= Jx[tid]*dt;
 }
 
 // <<NumCell, threads>>
 __global__ void update_part(NUMBER *rx, NUMBER *vx, NUMBER *Ex, NUMBER lbox, NUMBER qm, NUMBER dt, 
                            NUMBER dx, int parThre)
 {
-//if ((threadIdx.x == 0) && (blockIdx.x == 0)) printf("Update part\n");
-  int tid = (threadIdx.x + blockIdx.x * blockDim.x)*parThre;
+  int nth = blockDim.x;
+  int nbl = gridDim.x;
+  int tid = nth*blockIdx.x + threadIdx.x;
+  int nthab = nth*nbl;
 
-  for (int i=0; i<parThre; i++, tid++) {
+  for (int i=0; i<parThre; i++, tid+=nthab) {
     NUMBER x = rx[tid];
     NUMBER v = vx[tid];
 
@@ -239,10 +251,12 @@ InputData readInput(const char* file)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
 ////
 ////    MAIN 
 ////
 ////////////////////////////////////////////////////////////////////////////////
+////
 ////
 ////  Input file format: 
 ////           # First line as a comment
@@ -271,6 +285,8 @@ int main(int argc, char* argv[])
   float cutime;
   cudaEventCreate(&start);
   cudaEventCreate(&stop);
+  float times[4];
+  times[0] = times[1] = times[2] = times[3] = 0;
 
   InputData data = readInput(argv[1]);
   int threads = atoi(argv[2]);
@@ -415,15 +431,38 @@ int main(int argc, char* argv[])
   /*                 MAIN LOOP                   */
   /***********************************************/
   //Start kernel timer
-  cudaEventRecord(start, 0);
+  //cudaEventRecord(start, 0);
 
   char name[128];
   for (int c=0; c<Cycles; c++) {
 	
+    cudaEventRecord(start, 0);
     update_part<<<NumCell,threads>>>(d_rx, d_vx, d_Ex, L, qom, dt, dx, ParThread);	
+    cudaEventRecord(stop,0);
+    cudaEventSynchronize(stop);
+    cudaEventElapsedTime(&cutime, start, stop);
+    times[0] += cutime;
+
+    cudaEventRecord(start, 0);
     set_current<<<1, threads>>>(d_Jx, NodThread);
+    cudaEventRecord(stop,0);
+    cudaEventSynchronize(stop);
+    cudaEventElapsedTime(&cutime, start, stop);
+    times[1] += cutime;
+
+    cudaEventRecord(start, 0);
     add_current<<<NumCell,threads>>>(d_Jx, d_rx, d_vx, dx, q, ParThread);
+    cudaEventRecord(stop,0);
+    cudaEventSynchronize(stop);
+    cudaEventElapsedTime(&cutime, start, stop);
+    times[2] += cutime;
+
+    cudaEventRecord(start, 0);
     calc_field<<<1, threads>>>(d_Jx, d_Ex, dt, NodThread);
+    cudaEventRecord(stop,0);
+    cudaEventSynchronize(stop);
+    cudaEventElapsedTime(&cutime, start, stop);
+    times[3] += cutime;
 
     if ((c) % data.ioc == 0) {
       printf("Cycle %d \n",c);
@@ -463,10 +502,20 @@ int main(int argc, char* argv[])
   cudaMemcpy(h_vx, d_vx, TotPart*sizeof(NUMBER), cudaMemcpyDeviceToHost);
 	
   // Stop kernel timer
-  cudaEventRecord(stop,0);
-  cudaEventSynchronize(stop);
-  cudaEventElapsedTime(&cutime, start, stop);
-  printf("Kernel execution time: %.3f s\n", cutime/1000);
+  //cudaEventRecord(stop,0);
+  //cudaEventSynchronize(stop);
+  //cudaEventElapsedTime(&cutime, start, stop);
+  float tt = times[0] + times[1] + times[2] + times[3];
+  printf("Kernel execution time: \n"
+         "  Mover      : %.3f s\n"
+         "  Set current: %.3f s\n"
+         "  Add current: %.3f s\n"
+         "  Field calc : %.3f s\n"
+        ,times[0]/1000
+        ,times[1]/1000
+        ,times[2]/1000
+        ,times[3]/1000);
+  printf("Kernel execution time: %.3f s\n", tt/1000);
 
 #ifdef WITH_HISTOGRAMS
   sprintf(name,"%s_rx_%d.txt",data.name, Cycles);
@@ -507,6 +556,8 @@ int main(int argc, char* argv[])
   // close files
   fclose(fd_Ex);
   fclose(fd_Jx);
+
+  cudaDeviceReset();
 
   return(0);
 } 
